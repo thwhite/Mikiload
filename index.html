@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>MIKILOAD</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛏️</text></svg>">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#0a0604; touch-action:none;
+    font-family:'Courier New', monospace; user-select:none; -webkit-user-select:none; overscroll-behavior:none; }
+  #game { position:fixed; inset:0; display:block; }
+  /* ---------- HUD ---------- */
+  #hud { position:fixed; top:0; left:0; right:0; padding:calc(6px + env(safe-area-inset-top)) 8px 6px;
+    display:flex; gap:8px; align-items:center; pointer-events:none; z-index:5;
+    background:linear-gradient(#000c, #0000); color:#fff; font-size:13px; font-weight:bold; }
+  .bar { flex:1; max-width:130px; height:16px; border:2px solid #fff8; border-radius:4px; position:relative; background:#0008; }
+  .bar > i { position:absolute; inset:0; border-radius:2px; transform-origin:left; }
+  .bar > span { position:absolute; inset:0; text-align:center; font-size:10px; line-height:13px; color:#fff; text-shadow:0 1px 2px #000; font-style:normal; }
+  #fuelFill { background:linear-gradient(#ffd75e,#e09a1a); }
+  #hullFill { background:linear-gradient(#7ee87e,#2aa32a); }
+  #hudRight { margin-left:auto; text-align:right; text-shadow:0 1px 3px #000; line-height:1.35; pointer-events:none; }
+  #cashLbl { color:#ffd75e; font-size:15px; }
+  #depthLbl { color:#9adfff; }
+  #cargoLbl { color:#ffb3f2; }
+  #muteBtn { pointer-events:auto; background:#0006; border:2px solid #fff5; color:#fff; border-radius:6px;
+    font-size:14px; width:32px; height:28px; }
+  /* ---------- Touch controls ---------- */
+  .padBtn { position:fixed; z-index:6; width:74px; height:74px; border-radius:18px;
+    background:#ffffff14; border:2px solid #ffffff3d; color:#ffffffd0; font-size:30px;
+    display:flex; align-items:center; justify-content:center; touch-action:none;
+    backdrop-filter:blur(2px); }
+  .padBtn.pressed { background:#ffd75e40; border-color:#ffd75e; color:#ffd75e; }
+  #btnL { left:14px;  bottom:calc(24px + env(safe-area-inset-bottom)); }
+  #btnR { left:104px; bottom:calc(24px + env(safe-area-inset-bottom)); }
+  #btnD { right:14px; bottom:calc(24px + env(safe-area-inset-bottom)); }
+  #btnU { right:14px; bottom:calc(114px + env(safe-area-inset-bottom)); width:74px; height:74px; }
+  @media (pointer:fine) and (min-width:900px) { .padBtn { opacity:.35; } }
+  /* ---------- Panels ---------- */
+  .panel { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:10;
+    background:#1d130b; border:3px solid #c98a3b; border-radius:12px; color:#f5e6cf;
+    width:min(92vw, 420px); max-height:82vh; overflow-y:auto; padding:16px; display:none;
+    box-shadow:0 12px 60px #000c; }
+  .panel h2 { color:#ffd75e; margin-bottom:4px; font-size:20px; letter-spacing:1px; }
+  .panel .sub { color:#c9b189; font-size:12px; margin-bottom:12px; }
+  .prow { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px dashed #5a422a; font-size:13px; }
+  .prow .grow { flex:1; }
+  .prow small { color:#b09a77; display:block; font-size:11px; }
+  button.act { background:#c98a3b; border:none; color:#241503; font-weight:bold; font-family:inherit;
+    padding:9px 14px; border-radius:8px; font-size:13px; }
+  button.act:disabled { background:#57452e; color:#8d7c62; }
+  button.act.big { width:100%; padding:12px; font-size:15px; margin-top:6px; }
+  button.close { position:absolute; top:8px; right:8px; background:none; border:none; color:#c98a3b; font-size:22px; font-weight:bold; }
+  /* ---------- Overlays ---------- */
+  #titleOverlay, #deadOverlay { position:fixed; inset:0; z-index:20; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center; color:#f5e6cf;
+    background:radial-gradient(ellipse at 50% 30%, #2b1a0e 0%, #0a0604 75%); padding:20px; }
+  #titleOverlay h1 { font-size:clamp(44px, 13vw, 92px); color:#ffd75e; letter-spacing:4px;
+    text-shadow:0 4px 0 #7a4a12, 0 8px 24px #000; }
+  #titleOverlay .tag { color:#c9b189; margin:10px 0 26px; font-size:14px; line-height:1.6; }
+  #titleOverlay button, #deadOverlay button { background:#ffd75e; color:#241503; border:none; font-family:inherit;
+    font-weight:bold; font-size:18px; padding:14px 34px; border-radius:10px; margin:6px; box-shadow:0 4px 0 #7a4a12; }
+  #titleOverlay button.minor { background:#43301c; color:#c9b189; box-shadow:0 4px 0 #241503; font-size:14px; }
+  #deadOverlay { display:none; background:#000d; }
+  #deadOverlay h1 { color:#ff6a4d; font-size:34px; margin-bottom:10px; }
+  #deadOverlay p { color:#c9b189; margin-bottom:18px; font-size:14px; line-height:1.6; }
+  #toast { position:fixed; top:18%; left:50%; transform:translateX(-50%); z-index:8; pointer-events:none;
+    text-align:center; width:94vw; }
+  .toastMsg { display:inline-block; background:#000a; border:2px solid #ffd75e; color:#ffd75e; border-radius:10px;
+    padding:8px 18px; font-size:15px; font-weight:bold; margin-top:6px; animation:toastIn .3s ease-out;
+    box-shadow:0 4px 20px #000a; }
+  @keyframes toastIn { from { opacity:0; transform:translateY(-12px);} to { opacity:1; transform:none; } }
+  .hint { font-size:12px; color:#8d7c62; margin-top:22px; line-height:1.7; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div class="bar"><i id="fuelFill"></i><span>FUEL</span></div>
+  <div class="bar"><i id="hullFill"></i><span>HULL</span></div>
+  <div id="hudRight">
+    <div id="cashLbl">$0</div>
+    <div id="depthLbl">0 m</div>
+    <div id="cargoLbl">0/10</div>
+  </div>
+  <button id="muteBtn">🔊</button>
+</div>
+
+<button class="padBtn" id="btnL">◀</button>
+<button class="padBtn" id="btnR">▶</button>
+<button class="padBtn" id="btnU">🔥</button>
+<button class="padBtn" id="btnD">⛏</button>
+
+<div class="panel" id="shopPanel"><button class="close">✕</button><div id="shopContent"></div></div>
+
+<div id="toast"></div>
+
+<div id="titleOverlay">
+  <h1>MIKILOAD</h1>
+  <div class="tag">⛏️ Dig deep. Strike it rich. Don't run out of fuel. ⛽<br>
+  <b style="color:#ffd75e">A birthday expedition for a legendary pod pilot.</b></div>
+  <button id="continueBtn" style="display:none">CONTINUE ⛏️</button>
+  <button id="newBtn">NEW GAME</button>
+  <button id="resetBtn" class="minor" style="display:none">reset save</button>
+  <div class="hint">
+    📱 touch: ◀ ▶ move &nbsp;·&nbsp; 🔥 thrust &nbsp;·&nbsp; ⛏ drill down<br>
+    ⌨️ or arrow keys / WASD &nbsp;·&nbsp; hold into dirt to drill sideways<br>
+    land on the surface buildings to refuel, sell &amp; upgrade
+  </div>
+</div>
+
+<div id="deadOverlay">
+  <h1 id="deadTitle">POD DESTROYED</h1>
+  <p id="deadMsg"></p>
+  <button id="rescueBtn">CALL RESCUE 🚁</button>
+</div>
+
+<script>
+'use strict';
+/* =========================================================
+   MIKILOAD — a loving homage to a certain legendary
+   flash-era mining game. Dig, sell, upgrade, repeat.
+   ========================================================= */
+
+// ------------------------- constants -------------------------
+const TILE = 32;
+const COLS = 36, ROWS = 440, SURF = 6;      // surface = top of row SURF
+const M_PER_ROW = 6;                        // depth meters per row
+const EGG_ROW = 150;                        // "Dungeon Crawler Carl" band
+const EGG_BAND = [EGG_ROW - 4, EGG_ROW + 22];
+const SAVE_KEY = 'mikiload-save-v1';
+
+const T = { EMPTY:0, DIRT:1, ROCK:2, GAS:3, LAVA:4, RUNE:5 };
+// ores start at 10
+const ORES = [
+  { id:10, name:'Ironium',   val:30,    color:'#c98a6b', lo:8,   hi:100, p:0.058 },
+  { id:11, name:'Bronzium',  val:60,    color:'#e0a33c', lo:18,  hi:150, p:0.048 },
+  { id:12, name:'Silverium', val:150,   val2:0, color:'#d8dce6', lo:45,  hi:210, p:0.038 },
+  { id:13, name:'Goldium',   val:400,   color:'#ffd94a', lo:80,  hi:270, p:0.032 },
+  { id:14, name:'Mikium',    val:1000,  color:'#7cf6d4', lo:125, hi:330, p:0.024 },
+  { id:15, name:'Emerald',   val:2500,  color:'#3ee06c', lo:180, hi:390, p:0.019 },
+  { id:16, name:'Ruby',      val:8000,  color:'#ff4d6a', lo:245, hi:440, p:0.014 },
+  { id:17, name:'Diamond',   val:20000, color:'#aef4ff', lo:305, hi:440, p:0.010 },
+];
+const oreById = {}; ORES.forEach(o => oreById[o.id] = o);
+
+const UPG = {
+  drill:  { name:'Drill',    icon:'⛏️', stat:['Rusty','Steel','Carbide','Diamond','Plasma'],      vals:[1, 1.6, 2.3, 3.3, 4.6] },
+  engine: { name:'Engine',   icon:'🚀', stat:['Putt-putt','V4','V8','Turbo','Anti-grav'],         vals:[1, 1.2, 1.45, 1.75, 2.1] },
+  fuel:   { name:'Fuel Tank',icon:'⛽', stat:['Small','Medium','Large','Huge','Colossal'],        vals:[100, 165, 270, 430, 700] },
+  cargo:  { name:'Cargo Bay',icon:'📦', stat:['Micro','Small','Medium','Large','Enormous'],       vals:[10, 18, 30, 50, 80] },
+  hull:   { name:'Hull',     icon:'🛡️', stat:['Tin can','Steel','Titanium','Composite','Fable'],  vals:[60, 100, 160, 260, 420] },
+};
+const UPG_PRICE = [0, 750, 2600, 9000, 30000];   // price to reach tier index
+
+const FUEL_PRICE = 2;      // $ per unit
+const REPAIR_PRICE = 2;    // $ per hp
+
+const BUILDINGS = [
+  { key:'fuel',   name:'FUEL DEPOT',   icon:'⛽', c0:2,  c1:5,  color:'#d8542e' },
+  { key:'sell',   name:'ORE TRADER',   icon:'💰', c0:11, c1:14, color:'#2e8fd8' },
+  { key:'shop',   name:'UPGRADE SHOP', icon:'🔧', c0:21, c1:24, color:'#8a5fd6' },
+  { key:'repair', name:'REPAIR BAY',   icon:'❤️', c0:30, c1:33, color:'#3aa64c' },
+];
+
+// ------------------------- utilities -------------------------
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a);
+  t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; } }
+const clamp = (v,a,b)=>v<a?a:(v>b?b:v);
+const lerp = (a,b,t)=>a+(b-a)*t;
+
+// 3x5 pixel font for the rune message
+const FONT3 = {
+  A:['111','101','111','101','101'], C:['111','100','100','100','111'],
+  D:['110','101','101','101','110'], E:['111','100','111','100','111'],
+  G:['111','100','101','101','111'], L:['100','100','100','100','111'],
+  N:['101','111','111','111','101'], O:['111','101','101','101','111'],
+  R:['111','101','110','101','101'], U:['101','101','101','101','111'],
+  W:['101','101','111','111','101'],
+};
+
+// ------------------------- audio -------------------------
+let audioCtx = null, muted = false;
+function beep(freq, dur, type='square', vol=0.12, slide=0){
+  if (muted) return;
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const t0 = audioCtx.currentTime;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t0);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30,freq+slide), t0+dur);
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t0); o.stop(t0+dur+0.02);
+  } catch(e){}
+}
+const sfx = {
+  dig:    ()=>beep(90+Math.random()*40, .08, 'sawtooth', .08),
+  ore:    ()=>{ beep(660,.09,'square',.1); setTimeout(()=>beep(880,.12,'square',.1), 70); },
+  hurt:   ()=>beep(120,.25,'sawtooth',.2,-60),
+  sell:   ()=>{ [523,659,784,1047].forEach((f,i)=>setTimeout(()=>beep(f,.12,'square',.12), i*70)); },
+  buy:    ()=>{ beep(392,.1,'square',.12); setTimeout(()=>beep(587,.15,'square',.12), 90); },
+  boom:   ()=>beep(60,.6,'sawtooth',.3,-40),
+  rune:   ()=>{ [220,277,330,440,554].forEach((f,i)=>setTimeout(()=>beep(f,.4,'triangle',.1), i*90)); },
+  thrust: null,
+};
+
+// ------------------------- state -------------------------
+let grid;                    // Uint8Array COLS*ROWS
+let P;                       // player state
+let cam = { x:0, y:0, scale:1, targetScale:1 };
+let running = false, dead = false, panelOpen = false;
+let lastPanelKey = null;
+let eggSeen = false, eggToastDone = false;
+let particles = [], floaters = [];
+let shake = 0;
+let seed = 0;
+
+const idx = (c,r)=>r*COLS+c;
+const tileAt = (c,r)=>{
+  if (c<0||c>=COLS) return T.ROCK;
+  if (r>=ROWS) return T.ROCK;
+  if (r<0) return T.EMPTY;
+  return grid[idx(c,r)];
+};
+const solid = t => t !== T.EMPTY;
+const drillable = t => t===T.DIRT || t===T.GAS || t===T.LAVA || t===T.RUNE || t>=10;
+
+// ------------------------- world gen -------------------------
+function genWorld(s){
+  seed = s;
+  const rnd = mulberry32(s);
+  grid = new Uint8Array(COLS*ROWS);
+  for (let r=SURF; r<ROWS; r++){
+    for (let c=0; c<COLS; c++){
+      let t = T.DIRT;
+      const inEgg = r>=EGG_BAND[0] && r<=EGG_BAND[1];
+      if (!inEgg && r > SURF+1){
+        const roll = rnd();
+        // rocks
+        if (roll < 0.035) t = T.ROCK;
+        else {
+          // hazards
+          const gasP  = r<25 ? 0 : clamp((r-25)/900, 0, .022);
+          const lavaP = r<125 ? 0 : clamp((r-125)/1400, 0, .05);
+          const roll2 = rnd();
+          if (roll2 < gasP) t = T.GAS;
+          else if (roll2 < gasP+lavaP) t = T.LAVA;
+          else {
+            // ores — deepest first so rare ones win
+            for (let i=ORES.length-1; i>=0; i--){
+              const o = ORES[i];
+              if (r>=o.lo && r<=o.hi && rnd() < o.p){ t = o.id; break; }
+            }
+          }
+        }
+      } else { rnd(); rnd(); } // keep rng stream stable-ish
+      grid[idx(c,r)] = t;
+    }
+  }
+  carveRunes();
+}
+
+function carveRunes(){
+  // rows of glowing rune-tiles spelling the message, centered
+  const words = ['DUNGEON','CRAWLER','CARL'];
+  words.forEach((word, wi) => {
+    const wTiles = word.length*4 - 1;
+    const c0 = Math.floor((COLS - wTiles)/2);
+    const r0 = EGG_ROW + wi*7;
+    for (let li=0; li<word.length; li++){
+      const gl = FONT3[word[li]];
+      for (let y=0; y<5; y++) for (let x=0; x<3; x++){
+        if (gl[y][x]==='1') grid[idx(c0 + li*4 + x, r0 + y)] = T.RUNE;
+      }
+    }
+  });
+}
+
+// ------------------------- player -------------------------
+function newPlayer(){
+  return {
+    x: 17.5*TILE, y: (SURF-1)*TILE + TILE/2, vx:0, vy:0,
+    w: 24, h: 26,
+    cash: 20, fuel: UPG.fuel.vals[0], hull: UPG.hull.vals[0],
+    cargo: [],                                    // list of ore ids
+    tier: { drill:0, engine:0, fuel:0, cargo:0, hull:0 },
+    drilling: null,                               // {c,r,t,dur,fromX,fromY}
+    facing: 1, thrusting:false, grounded:false,
+  };
+}
+const maxFuel  = ()=>UPG.fuel.vals[P.tier.fuel];
+const maxHull  = ()=>UPG.hull.vals[P.tier.hull];
+const maxCargo = ()=>UPG.cargo.vals[P.tier.cargo];
+const drillSpd = ()=>UPG.drill.vals[P.tier.drill];
+const engMul   = ()=>UPG.engine.vals[P.tier.engine];
+const playerRow = ()=>Math.floor(P.y/TILE);
+const depthM   = ()=>Math.max(0, Math.round((P.y/TILE - SURF)*M_PER_ROW));
+
+// ------------------------- save/load -------------------------
+function save(){
+  try {
+    const dug = [];
+    // store only tiles that differ from regen — cheaper: store whole grid compact
+    let gs = '';
+    for (let i=0;i<grid.length;i++) gs += String.fromCharCode(65+grid[i]);
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      seed, gs, cash:P.cash, fuel:P.fuel, hull:P.hull, cargo:P.cargo,
+      tier:P.tier, eggSeen, eggToastDone,
+    }));
+  } catch(e){}
+}
+function loadSave(){
+  try {
+    const d = JSON.parse(localStorage.getItem(SAVE_KEY));
+    if (!d || !d.gs || d.gs.length !== COLS*ROWS) return false;
+    seed = d.seed;
+    grid = new Uint8Array(COLS*ROWS);
+    for (let i=0;i<grid.length;i++) grid[i] = d.gs.charCodeAt(i)-65;
+    P = newPlayer();
+    P.cash = d.cash; P.tier = d.tier;
+    P.fuel = clamp(d.fuel, 0, maxFuel());
+    P.hull = clamp(d.hull, 1, maxHull());
+    P.cargo = d.cargo || [];
+    eggSeen = !!d.eggSeen; eggToastDone = !!d.eggToastDone;
+    return true;
+  } catch(e){ return false; }
+}
+
+// ------------------------- input -------------------------
+const input = { l:false, r:false, u:false, d:false };
+function bindBtn(id, key){
+  const el = document.getElementById(id);
+  const on  = e=>{ e.preventDefault(); input[key]=true; el.classList.add('pressed'); if(!audioCtx) beep(0,.01,'sine',0); };
+  const off = e=>{ e.preventDefault(); input[key]=false; el.classList.remove('pressed'); };
+  el.addEventListener('pointerdown', on);
+  el.addEventListener('pointerup', off);
+  el.addEventListener('pointercancel', off);
+  el.addEventListener('pointerleave', off);
+  el.addEventListener('contextmenu', e=>e.preventDefault());
+}
+bindBtn('btnL','l'); bindBtn('btnR','r'); bindBtn('btnU','u'); bindBtn('btnD','d');
+const KEYMAP = { ArrowLeft:'l', a:'l', ArrowRight:'r', d:'r', ArrowUp:'u', w:'u', ' ':'u', ArrowDown:'d', s:'d' };
+addEventListener('keydown', e=>{ const k=KEYMAP[e.key]; if(k){ input[k]=true; e.preventDefault(); } });
+addEventListener('keyup',   e=>{ const k=KEYMAP[e.key]; if(k){ input[k]=false; e.preventDefault(); } });
+addEventListener('blur', ()=>{ input.l=input.r=input.u=input.d=false; });
+
+document.getElementById('muteBtn').addEventListener('click', ()=>{
+  muted = !muted;
+  document.getElementById('muteBtn').textContent = muted ? '🔇' : '🔊';
+});
+
+// ------------------------- physics -------------------------
+const GRAV = 900, TERM_FALL = 720;
+function step(dt){
+  if (P.drilling){ stepDrill(dt); return; }
+
+  const em = engMul();
+  const accel = 1500*em, maxVX = 250*em, maxUp = 330*em, thrustA = 2300*em;
+  P.thrusting = false;
+
+  if (input.l){ P.vx -= accel*dt; P.facing=-1; }
+  if (input.r){ P.vx += accel*dt; P.facing=1; }
+  if (!input.l && !input.r) P.vx *= Math.pow(0.0008, dt); // friction
+  if (input.u && P.fuel>0){ P.vy -= thrustA*dt; P.thrusting=true; }
+  P.vy += GRAV*dt;
+  P.vx = clamp(P.vx, -maxVX, maxVX);
+  P.vy = clamp(P.vy, -maxUp, TERM_FALL);
+
+  // fuel burn
+  let burn = 0.35;
+  if (P.thrusting) burn += 1.7;
+  if (input.l||input.r) burn += 0.3;
+  P.fuel = Math.max(0, P.fuel - burn*dt);
+  if (P.fuel <= 0 && !dead){ die('Ran out of fuel — the pod went dark and tumbled into the deep.'); return; }
+
+  // integrate + collide, X then Y
+  const hw = P.w/2, hh = P.h/2;
+  P.x += P.vx*dt;
+  {
+    const top = Math.floor((P.y-hh+2)/TILE), bot = Math.floor((P.y+hh-2)/TILE);
+    if (P.vx>0){
+      const c = Math.floor((P.x+hw)/TILE);
+      for (let r=top;r<=bot;r++) if (solid(tileAt(c,r))){ P.x = c*TILE-hw-0.01; P.vx=0; break; }
+    } else if (P.vx<0){
+      const c = Math.floor((P.x-hw)/TILE);
+      for (let r=top;r<=bot;r++) if (solid(tileAt(c,r))){ P.x = (c+1)*TILE+hw+0.01; P.vx=0; break; }
+    }
+    P.x = clamp(P.x, hw+1, COLS*TILE-hw-1);
+  }
+  P.y += P.vy*dt;
+  P.grounded = false;
+  {
+    const left = Math.floor((P.x-hw+2)/TILE), right = Math.floor((P.x+hw-2)/TILE);
+    if (P.vy>0){
+      const r = Math.floor((P.y+hh)/TILE);
+      for (let c=left;c<=right;c++) if (solid(tileAt(c,r))){
+        P.y = r*TILE-hh-0.01;
+        if (P.vy > 500){ const dmg = (P.vy-500)*0.06; damage(dmg, 'a hard landing'); }
+        P.vy=0; P.grounded=true; break;
+      }
+    } else if (P.vy<0){
+      const r = Math.floor((P.y-hh)/TILE);
+      for (let c=left;c<=right;c++) if (solid(tileAt(c,r))){ P.y = (r+1)*TILE+hh+0.01; P.vy=0; break; }
+    }
+    // sky ceiling — you can hover above the buildings, but not leave the map
+    if (P.y < TILE*1.4){ P.y = TILE*1.4; if (P.vy<0) P.vy = 0; }
+  }
+
+  // drilling initiation (must be grounded, Motherload-style)
+  if (P.grounded){
+    const pc = Math.floor(P.x/TILE), pr = Math.floor(P.y/TILE);
+    let tc=null, tr=null;
+    if (input.d){ tc=pc; tr=pr+1; }
+    else if (input.l && Math.abs(P.vx)<40){ tc=pc-1; tr=pr; }
+    else if (input.r && Math.abs(P.vx)<40){ tc=pc+1; tr=pr; }
+    if (tc!==null && tr>=SURF){
+      const t = tileAt(tc,tr);
+      if (drillable(t)){
+        // sideways drill needs support under target OR under player — always allowed, pod falls after
+        const hard = (t>=10) ? 1.35 : (t===T.RUNE ? 1 : 1);
+        P.drilling = { c:tc, r:tr, t:0, dur: 0.5*hard/drillSpd(), fromX:P.x, fromY:P.y };
+        P.vx=0; P.vy=0;
+      }
+    }
+  }
+
+  // building proximity (auto-open when parked on surface)
+  if (P.grounded && playerRow() === SURF-1 && Math.abs(P.vx)<20 && !panelOpen){
+    const pc = P.x/TILE;
+    const b = BUILDINGS.find(b=>pc>=b.c0 && pc<=b.c1+1);
+    if (b){ if (lastPanelKey !== b.key){ openPanel(b); } }
+    else lastPanelKey = null;
+  } else if (!P.grounded) lastPanelKey = null;
+
+  // egg proximity effects
+  const row = playerRow();
+  if (!eggToastDone && row > EGG_ROW-16){
+    eggToastDone = true;
+    toast('✨ The ground ahead is glowing… ✨');
+    sfx.rune();
+  }
+  if (!eggSeen && row > EGG_ROW-6){
+    eggSeen = true;
+    toast('𝕿𝖍𝖊 𝖘𝖙𝖗𝖆𝖙𝖆 𝖘𝖕𝖊𝖆𝖐𝖘…');
+    save();
+  }
+  // zoom out near the egg band so the whole message is visible
+  cam.targetScale = (row > EGG_ROW-16 && row < EGG_BAND[1]+14) ? fitAllScale() : baseScale();
+}
+
+function stepDrill(dt){
+  const D = P.drilling;
+  D.t += dt;
+  P.fuel = Math.max(0, P.fuel - 1.1*dt);
+  const k = clamp(D.t/D.dur, 0, 1);
+  P.x = lerp(D.fromX, D.c*TILE+TILE/2, k);
+  P.y = lerp(D.fromY, D.r*TILE+TILE/2, k);
+  if (Math.random()<0.5) spawnDust(D.c*TILE+TILE/2, D.r*TILE+TILE/2, dirtColor(D.r));
+  if (D.t===dt) sfx.dig();
+  if (k>=1){
+    const t = tileAt(D.c, D.r);
+    grid[idx(D.c,D.r)] = T.EMPTY;
+    P.drilling = null;
+    onDug(t, D.c, D.r);
+  }
+  if (P.fuel<=0 && !dead){ P.drilling=null; die('Ran out of fuel mid-drill.'); }
+}
+
+function onDug(t, c, r){
+  if (t>=10){
+    const o = oreById[t];
+    if (P.cargo.length < maxCargo()){
+      P.cargo.push(t);
+      floatText(c*TILE+TILE/2, r*TILE, o.name, o.color);
+      sfx.ore();
+      if (P.cargo.length === maxCargo()) toast('📦 Cargo bay FULL — go sell!');
+    } else {
+      floatText(c*TILE+TILE/2, r*TILE, 'CARGO FULL!', '#ff6a4d');
+    }
+  } else if (t===T.GAS){
+    damage(10 + r*0.05, 'a gas pocket'); shake = 0.35;
+    sfx.hurt();
+    for (let i=0;i<14;i++) spawnDust(c*TILE+TILE/2, r*TILE+TILE/2, '#8fdc5a', 160);
+  } else if (t===T.LAVA){
+    damage(24 + r*0.05, 'molten lava'); shake = 0.5;
+    sfx.hurt();
+    for (let i=0;i<14;i++) spawnDust(c*TILE+TILE/2, r*TILE+TILE/2, '#ff7a2e', 160);
+  } else if (t===T.RUNE){
+    P.cash += 100;
+    floatText(c*TILE+TILE/2, r*TILE, '+$100 CARLITE ✨', '#ffd75e');
+    sfx.rune();
+  } else {
+    sfx.dig();
+  }
+}
+
+function damage(d, why){
+  P.hull -= d;
+  if (P.hull <= 0 && !dead) die('The hull gave out after ' + why + '.');
+}
+
+function die(msg){
+  dead = true; running = false;
+  sfx.boom();
+  shake = 1;
+  const lost = P.cargo.length;
+  P.cargo = [];
+  document.getElementById('deadMsg').textContent =
+    msg + (lost ? ` The rescue crew couldn't recover your ${lost} ore${lost>1?'s':''}.` : '') +
+    ' Upgrades and cash are safe.';
+  document.getElementById('deadOverlay').style.display = 'flex';
+}
+document.getElementById('rescueBtn').addEventListener('click', ()=>{
+  document.getElementById('deadOverlay').style.display = 'none';
+  P.x = 17.5*TILE; P.y = (SURF-1)*TILE + TILE/2; P.vx=P.vy=0;
+  P.fuel = maxFuel(); P.hull = Math.max(P.hull, maxHull()*0.5);
+  if (P.hull<=0) P.hull = maxHull()*0.5;
+  dead = false; running = true; lastPanelKey = null;
+  save();
+});
+
+// ------------------------- shops -------------------------
+const panelEl = document.getElementById('shopPanel');
+const shopContent = document.getElementById('shopContent');
+panelEl.querySelector('.close').addEventListener('click', closePanel);
+
+function openPanel(b){
+  panelOpen = true; lastPanelKey = b.key;
+  renderPanel(b);
+  panelEl.style.display = 'block';
+  save();
+}
+function closePanel(){ panelOpen = false; panelEl.style.display = 'none'; }
+
+function renderPanel(b){
+  let html = `<h2>${b.icon} ${b.name}</h2>`;
+  if (b.key==='fuel'){
+    const need = Math.ceil(maxFuel() - P.fuel);
+    const cost = Math.min(need*FUEL_PRICE, Math.floor(P.cash));
+    const units = Math.floor(cost/FUEL_PRICE);
+    html += `<div class="sub">Fuel: ${Math.floor(P.fuel)}/${maxFuel()} · $${FUEL_PRICE}/unit</div>`;
+    html += `<button class="act big" data-a="refuel" ${need<=0||units<=0?'disabled':''}>
+      ${need<=0 ? 'TANK FULL' : `FILL 'ER UP — $${units*FUEL_PRICE}`}</button>`;
+  }
+  if (b.key==='sell'){
+    const total = P.cargo.reduce((s,id)=>s+oreById[id].val, 0);
+    const counts = {};
+    P.cargo.forEach(id=>counts[id]=(counts[id]||0)+1);
+    html += `<div class="sub">Cargo: ${P.cargo.length}/${maxCargo()}</div>`;
+    if (!P.cargo.length) html += `<div class="prow">Nothing in the hold. Go dig!</div>`;
+    for (const id in counts){
+      const o = oreById[id];
+      html += `<div class="prow"><span style="color:${o.color}">◆</span>
+        <span class="grow">${o.name} × ${counts[id]}</span><b>$${o.val*counts[id]}</b></div>`;
+    }
+    html += `<button class="act big" data-a="sell" ${!total?'disabled':''}>SELL ALL — $${total}</button>`;
+  }
+  if (b.key==='shop'){
+    html += `<div class="sub">Cash: $${Math.floor(P.cash)}</div>`;
+    for (const k in UPG){
+      const u = UPG[k], t = P.tier[k];
+      const maxed = t >= u.vals.length-1;
+      const price = maxed ? 0 : UPG_PRICE[t+1];
+      html += `<div class="prow">${u.icon}<div class="grow"><b>${u.name}</b> — ${u.stat[t]}
+        <small>${maxed ? 'MAXED OUT' : 'next: '+u.stat[t+1]}</small></div>
+        <button class="act" data-a="upg" data-k="${k}" ${maxed||P.cash<price?'disabled':''}>
+        ${maxed?'★':'$'+price}</button></div>`;
+    }
+  }
+  if (b.key==='repair'){
+    const need = Math.ceil(maxHull() - P.hull);
+    const afford = Math.min(need, Math.floor(P.cash/REPAIR_PRICE));
+    html += `<div class="sub">Hull: ${Math.ceil(P.hull)}/${maxHull()} · $${REPAIR_PRICE}/point</div>`;
+    html += `<button class="act big" data-a="repair" ${afford<=0?'disabled':''}>
+      ${need<=0 ? 'HULL PERFECT' : `REPAIR — $${afford*REPAIR_PRICE}`}</button>`;
+  }
+  shopContent.innerHTML = html;
+  shopContent.querySelectorAll('button.act').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const a = btn.dataset.a;
+      if (a==='refuel'){
+        const units = Math.min(Math.ceil(maxFuel()-P.fuel), Math.floor(P.cash/FUEL_PRICE));
+        P.fuel += units; P.cash -= units*FUEL_PRICE; sfx.buy();
+      }
+      if (a==='sell'){
+        const total = P.cargo.reduce((s,id)=>s+oreById[id].val,0);
+        P.cash += total; P.cargo = []; sfx.sell();
+        floatText(P.x, P.y-30, '+$'+total, '#ffd75e');
+      }
+      if (a==='upg'){
+        const k = btn.dataset.k, price = UPG_PRICE[P.tier[k]+1];
+        if (P.cash>=price){ P.cash-=price; P.tier[k]++; sfx.buy();
+          if (k==='fuel') P.fuel = maxFuel();
+          if (k==='hull') P.hull = maxHull();
+          toast(`${UPG[k].icon} ${UPG[k].name} upgraded: ${UPG[k].stat[P.tier[k]]}!`);
+        }
+      }
+      if (a==='repair'){
+        const pts = Math.min(Math.ceil(maxHull()-P.hull), Math.floor(P.cash/REPAIR_PRICE));
+        P.hull += pts; P.cash -= pts*REPAIR_PRICE; sfx.buy();
+      }
+      renderPanel(b); updateHUD(); save();
+    });
+  });
+}
+
+// ------------------------- fx -------------------------
+function spawnDust(x,y,color,spd=90){
+  particles.push({ x,y, vx:(Math.random()-.5)*spd*2, vy:(Math.random()-.8)*spd*2,
+    life:.4+Math.random()*.3, t:0, color });
+}
+function floatText(x,y,txt,color){ floaters.push({ x,y,txt,color,t:0 }); }
+function toast(msg){
+  const el = document.createElement('div');
+  el.className = 'toastMsg'; el.textContent = msg;
+  const box = document.getElementById('toast');
+  box.appendChild(el);
+  setTimeout(()=>{ el.style.transition='opacity .6s'; el.style.opacity='0'; }, 2600);
+  setTimeout(()=>el.remove(), 3300);
+}
+
+// ------------------------- rendering -------------------------
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W=0, H=0, DPR=1;
+function resize(){
+  DPR = Math.min(devicePixelRatio||1, 2);
+  W = innerWidth; H = innerHeight;
+  canvas.width = W*DPR; canvas.height = H*DPR;
+  canvas.style.width = W+'px'; canvas.style.height = H+'px';
+  cam.scale = cam.targetScale = baseScale();
+}
+function baseScale(){ return clamp(W/(13*TILE), 0.8, 1.9); }
+function fitAllScale(){ return Math.min(W/(COLS*TILE), baseScale()); }
+addEventListener('resize', resize);
+
+function dirtColor(r){
+  const d = clamp((r-SURF)/ROWS, 0, 1);
+  const rr = Math.round(lerp(139, 52, d));
+  const gg = Math.round(lerp(88, 26, d));
+  const bb = Math.round(lerp(51, 30, d));
+  return `rgb(${rr},${gg},${bb})`;
+}
+
+let time = 0;
+function render(){
+  const s = cam.scale;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+
+  // camera
+  let cx = P.x - W/(2*s), cy = P.y - H/(2*s);
+  cx = clamp(cx, 0, COLS*TILE - W/s);
+  if (W/s >= COLS*TILE) cx = (COLS*TILE - W/s)/2;
+  cy = clamp(cy, -260, ROWS*TILE - H/s);
+  if (shake>0){ cx += (Math.random()-.5)*shake*14; cy += (Math.random()-.5)*shake*14; }
+  cam.x = cx; cam.y = cy;
+
+  // sky
+  const skyH = (SURF*TILE - cy)*s;
+  if (skyH > 0){
+    const g = ctx.createLinearGradient(0,0,0,Math.max(skyH,1));
+    g.addColorStop(0,'#5db8e8'); g.addColorStop(1,'#a8dcf0');
+    ctx.fillStyle = g; ctx.fillRect(0,0,W,Math.max(skyH,0));
+    // sun + clouds
+    ctx.fillStyle='#fff3b0';
+    ctx.beginPath(); ctx.arc((6*TILE-cx)*s, (1.4*TILE-cy)*s, 26*s, 0, 7); ctx.fill();
+    ctx.fillStyle='#ffffffcc';
+    for (let i=0;i<4;i++){
+      const wx = ((i*9.7+2)*TILE - cx*0.6 + time*6)% (COLS*TILE*1.2);
+      ctx.beginPath(); ctx.ellipse((wx)*s*0.9, (1.1*TILE + i*14 - cy)*s, 42*s, 12*s, 0, 0, 7); ctx.fill();
+    }
+  }
+  // underground backdrop
+  ctx.fillStyle = '#160d07';
+  const gy = Math.max(skyH, 0);
+  ctx.fillRect(0, gy, W, H-gy);
+
+  // visible tiles
+  const c0 = Math.max(0, Math.floor(cx/TILE)), c1 = Math.min(COLS-1, Math.ceil((cx+W/s)/TILE));
+  const r0 = Math.max(0, Math.floor(cy/TILE)), r1 = Math.min(ROWS-1, Math.ceil((cy+H/s)/TILE));
+  for (let r=r0; r<=r1; r++){
+    for (let c=c0; c<=c1; c++){
+      const t = grid[idx(c,r)];
+      if (t===T.EMPTY) continue;
+      const x = (c*TILE-cx)*s, y = (r*TILE-cy)*s, ts = TILE*s+1;
+      if (t===T.DIRT || t>=10 || t===T.GAS || t===T.RUNE){
+        ctx.fillStyle = dirtColor(r);
+        ctx.fillRect(x,y,ts,ts);
+        // subtle texture
+        if (((c*7+r*13)%5)===0){ ctx.fillStyle='#00000018'; ctx.fillRect(x+ts*.2,y+ts*.55,ts*.35,ts*.2); }
+      }
+      if (r===SURF && t===T.DIRT){ ctx.fillStyle='#3f9b2e'; ctx.fillRect(x,y,ts,ts*0.28); }
+      if (t===T.ROCK){
+        ctx.fillStyle='#5a5a62'; ctx.fillRect(x,y,ts,ts);
+        ctx.fillStyle='#71717c'; ctx.beginPath();
+        ctx.moveTo(x,y+ts); ctx.lineTo(x+ts*.3,y+ts*.25); ctx.lineTo(x+ts*.7,y+ts*.4); ctx.lineTo(x+ts,y+ts*.15); ctx.lineTo(x+ts,y+ts); ctx.fill();
+      }
+      if (t===T.LAVA){
+        ctx.fillStyle='#7a1e08'; ctx.fillRect(x,y,ts,ts);
+        const pulse = .5+.5*Math.sin(time*4+c*2+r);
+        ctx.fillStyle=`rgba(255,${110+pulse*80|0},30,.9)`;
+        ctx.fillRect(x+ts*.1,y+ts*.15,ts*.8,ts*.7);
+        ctx.fillStyle='#ffd75e'; ctx.fillRect(x+ts*.3,y+ts*.4,ts*.15,ts*.12);
+      }
+      if (t===T.GAS){
+        const pulse = .5+.5*Math.sin(time*3+c*3+r*2);
+        ctx.fillStyle=`rgba(140,220,90,${.25+.2*pulse})`;
+        ctx.beginPath(); ctx.arc(x+ts/2,y+ts/2,ts*.32,0,7); ctx.fill();
+        ctx.fillStyle=`rgba(180,240,130,${.5+.3*pulse})`;
+        ctx.beginPath(); ctx.arc(x+ts/2,y+ts/2,ts*.15,0,7); ctx.fill();
+      }
+      if (t>=10){
+        const o = oreById[t];
+        ctx.fillStyle = o.color;
+        const m = ts*0.2;
+        ctx.beginPath();
+        ctx.moveTo(x+ts/2, y+m); ctx.lineTo(x+ts-m, y+ts/2); ctx.lineTo(x+ts/2, y+ts-m); ctx.lineTo(x+m, y+ts/2);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle='#ffffff70';
+        ctx.beginPath(); ctx.arc(x+ts*.42, y+ts*.4, ts*.07, 0, 7); ctx.fill();
+      }
+      if (t===T.RUNE){
+        const pulse = .5+.5*Math.sin(time*2.5 + c*.5 + r*.3);
+        ctx.fillStyle = `rgba(255,190,60,${.75+.25*pulse})`;
+        ctx.fillRect(x+ts*.08, y+ts*.08, ts*.84, ts*.84);
+        ctx.fillStyle = `rgba(255,246,200,${.5+.4*pulse})`;
+        ctx.fillRect(x+ts*.26, y+ts*.26, ts*.48, ts*.48);
+        ctx.shadowColor = '#ffb43c'; ctx.shadowBlur = 14*pulse*s;
+        ctx.strokeStyle = '#ffdf9e'; ctx.lineWidth = 2;
+        ctx.strokeRect(x+ts*.08, y+ts*.08, ts*.84, ts*.84);
+        ctx.shadowBlur = 0;
+      }
+    }
+  }
+
+  drawBuildings(cx, cy, s);
+  drawPod(cx, cy, s);
+
+  // particles
+  particles.forEach(p=>{
+    ctx.globalAlpha = clamp(1-p.t/p.life, 0, 1);
+    ctx.fillStyle = p.color;
+    ctx.fillRect((p.x-cx)*s-2, (p.y-cy)*s-2, 4*s, 4*s);
+  });
+  ctx.globalAlpha = 1;
+
+  // floaters
+  ctx.textAlign='center'; ctx.font = `bold ${Math.round(14*s)}px 'Courier New', monospace`;
+  floaters.forEach(f=>{
+    ctx.globalAlpha = clamp(1.4-f.t, 0, 1);
+    ctx.fillStyle='#000'; ctx.fillText(f.txt, (f.x-cx)*s+1, (f.y-cy)*s - f.t*36 + 1);
+    ctx.fillStyle=f.color; ctx.fillText(f.txt, (f.x-cx)*s, (f.y-cy)*s - f.t*36);
+  });
+  ctx.globalAlpha = 1;
+
+  // depth ruler lines every 250m
+  ctx.fillStyle='#ffffff30'; ctx.font=`${Math.round(11*s)}px monospace`; ctx.textAlign='left';
+  for (let m=250; m<=ROWS*M_PER_ROW; m+=250){
+    const rr = SURF + m/M_PER_ROW;
+    if (rr>=r0 && rr<=r1) ctx.fillText(`— ${m}m —`, 6, (rr*TILE-cy)*s);
+  }
+}
+
+function drawBuildings(cx, cy, s){
+  const baseY = SURF*TILE;
+  BUILDINGS.forEach(b=>{
+    const x0 = (b.c0*TILE - cx)*s, w = ((b.c1-b.c0+1)*TILE)*s;
+    const hgt = 2.1*TILE*s, y = (baseY - cy)*s - hgt;
+    // building body
+    ctx.fillStyle = b.color;
+    ctx.fillRect(x0, y, w, hgt);
+    ctx.fillStyle = '#00000030';
+    ctx.fillRect(x0, y, w, hgt*0.18);
+    // roof
+    ctx.fillStyle = '#2c1c10';
+    ctx.fillRect(x0-4*s, y-6*s, w+8*s, 8*s);
+    // door
+    ctx.fillStyle='#1d130b';
+    ctx.fillRect(x0+w/2-9*s, y+hgt-22*s, 18*s, 22*s);
+    // icon + label
+    ctx.textAlign='center';
+    ctx.font = `${Math.round(20*s)}px monospace`;
+    ctx.fillText(b.icon, x0+w/2, y+hgt*0.48);
+    ctx.font = `bold ${Math.round(9.5*s)}px 'Courier New', monospace`;
+    ctx.fillStyle='#fff';
+    ctx.fillText(b.name, x0+w/2, y-10*s);
+  });
+}
+
+function drawPod(cx, cy, s){
+  const x = (P.x-cx)*s, y = (P.y-cy)*s;
+  const w = P.w*s, h = P.h*s, f = P.facing;
+  ctx.save();
+  ctx.translate(x,y);
+  // thrust flame
+  if (P.thrusting){
+    const fl = (10+Math.random()*10)*s;
+    ctx.fillStyle='#ff9b2e';
+    ctx.beginPath(); ctx.moveTo(-w*.25, h/2); ctx.lineTo(w*.25, h/2); ctx.lineTo(0, h/2+fl); ctx.fill();
+    ctx.fillStyle='#ffe08a';
+    ctx.beginPath(); ctx.moveTo(-w*.12, h/2); ctx.lineTo(w*.12, h/2); ctx.lineTo(0, h/2+fl*.55); ctx.fill();
+  }
+  // tracks
+  ctx.fillStyle='#3b3b41';
+  ctx.beginPath(); ctx.roundRect(-w/2, h/2-7*s, w, 7*s, 3*s); ctx.fill();
+  ctx.fillStyle='#606068';
+  for (let i=0;i<3;i++){ ctx.beginPath(); ctx.arc(-w/3 + i*w/3, h/2-3.5*s, 2.4*s, 0, 7); ctx.fill(); }
+  // body
+  ctx.fillStyle='#d8542e';
+  ctx.beginPath(); ctx.roundRect(-w/2, -h/2+2*s, w, h-9*s, 5*s); ctx.fill();
+  ctx.fillStyle='#f0784e';
+  ctx.beginPath(); ctx.roundRect(-w/2, -h/2+2*s, w, (h-9*s)*.4, 5*s); ctx.fill();
+  // cockpit glass
+  ctx.fillStyle='#bfeaff';
+  ctx.beginPath(); ctx.arc(f*w*0.12, -h*0.16, w*0.26, 0, 7); ctx.fill();
+  ctx.fillStyle='#ffffff90';
+  ctx.beginPath(); ctx.arc(f*w*0.12 - w*0.08, -h*0.22, w*0.09, 0, 7); ctx.fill();
+  // drill arm
+  const drillAng = P.drilling
+    ? Math.atan2(P.drilling.r*TILE+TILE/2-P.y, P.drilling.c*TILE+TILE/2-P.x)
+    : (input.d ? Math.PI/2 : (f>0 ? 0.35 : Math.PI-0.35));
+  ctx.rotate(drillAng);
+  const spin = P.drilling ? (Math.floor(time*30)%2 ? 1 : 0.7) : 1;
+  ctx.fillStyle='#8d8d96';
+  ctx.fillRect(0, -3*s, w*0.55, 6*s);
+  ctx.fillStyle= P.drilling ? '#ffd75e' : '#c9c9d2';
+  ctx.beginPath();
+  ctx.moveTo(w*0.55, -6*s*spin); ctx.lineTo(w*0.85, 0); ctx.lineTo(w*0.55, 6*s*spin); ctx.fill();
+  ctx.restore();
+}
+
+// ------------------------- HUD -------------------------
+const fuelFill=document.getElementById('fuelFill'), hullFill=document.getElementById('hullFill');
+const cashLbl=document.getElementById('cashLbl'), depthLbl=document.getElementById('depthLbl'), cargoLbl=document.getElementById('cargoLbl');
+function updateHUD(){
+  fuelFill.style.transform = `scaleX(${clamp(P.fuel/maxFuel(),0,1)})`;
+  hullFill.style.transform = `scaleX(${clamp(P.hull/maxHull(),0,1)})`;
+  fuelFill.style.background = P.fuel/maxFuel()<0.25 ? '#ff4d3a' : '';
+  cashLbl.textContent = '$' + Math.floor(P.cash);
+  depthLbl.textContent = depthM() + ' m';
+  cargoLbl.textContent = '📦' + P.cargo.length + '/' + maxCargo();
+}
+
+// ------------------------- main loop -------------------------
+let lastT = 0;
+function loop(t){
+  requestAnimationFrame(loop);
+  const dt = Math.min((t-lastT)/1000, 0.05);
+  lastT = t;
+  time += dt;
+  if (running && !panelOpen && !dead){
+    step(dt);
+  }
+  cam.scale = lerp(cam.scale, cam.targetScale, clamp(dt*2.5, 0, 1));
+  shake = Math.max(0, shake - dt*2);
+  particles.forEach(p=>{ p.t+=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=400*dt; });
+  particles = particles.filter(p=>p.t<p.life);
+  floaters.forEach(f=>f.t+=dt);
+  floaters = floaters.filter(f=>f.t<1.4);
+  if (grid) render();
+  if (P) updateHUD();
+}
+requestAnimationFrame(loop);
+
+// ------------------------- boot -------------------------
+const titleEl = document.getElementById('titleOverlay');
+function startNew(){
+  genWorld((Math.random()*1e9)|0);
+  P = newPlayer();
+  eggSeen = eggToastDone = false;
+  begin();
+}
+function begin(){
+  titleEl.style.display = 'none';
+  resize();
+  running = true;
+  toast('⛏️ Dig down with the ⛏ button. Watch your fuel!');
+}
+document.getElementById('newBtn').addEventListener('click', ()=>{
+  if (localStorage.getItem(SAVE_KEY) && !confirm('Start over? This wipes the saved game.')) return;
+  localStorage.removeItem(SAVE_KEY);
+  startNew();
+});
+document.getElementById('continueBtn').addEventListener('click', ()=>{
+  if (loadSave()) begin(); else startNew();
+});
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  if (confirm('Delete saved game?')){ localStorage.removeItem(SAVE_KEY); location.reload(); }
+});
+if (localStorage.getItem(SAVE_KEY)){
+  document.getElementById('continueBtn').style.display='';
+  document.getElementById('resetBtn').style.display='';
+}
+resize();
+addEventListener('visibilitychange', ()=>{ if (document.hidden && P && running) save(); });
+</script>
+</body>
+</html>
